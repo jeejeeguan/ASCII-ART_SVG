@@ -41,6 +41,7 @@
         <div class="w-full lg:w-80">
           <label for="fontSelect" class="block text-sm font-medium text-gray-700 mb-2">
             Font Style ({{ currentFontIndex + 1 }}/{{ availableFonts.length }})
+            <span v-if="isLoadingFonts" class="text-blue-600 text-xs ml-2">Loading fonts...</span>
           </label>
           <div class="relative">
             <select
@@ -48,9 +49,10 @@
               v-model="selectedFont"
               class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none bg-white text-lg"
               @change="generateArt"
+              :disabled="isLoadingFonts"
             >
               <option v-for="font in availableFonts" :key="font" :value="font">
-                {{ font }}
+                {{ font }} {{ loadedFonts.has(font) ? '✓' : '' }}
               </option>
             </select>
             <div class="absolute inset-y-0 right-0 flex items-center px-2 pointer-events-none">
@@ -169,69 +171,26 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch } from 'vue'
 import figlet from 'figlet'
-// @ts-ignore - Font imports don't have types
-import standardFont from 'figlet/importable-fonts/Standard.js'
-// @ts-ignore
-import bigFont from 'figlet/importable-fonts/Big.js'
-// @ts-ignore
-import blockFont from 'figlet/importable-fonts/Block.js'
-// @ts-ignore
-import bubbleFont from 'figlet/importable-fonts/Bubble.js'
-// @ts-ignore
-import digitalFont from 'figlet/importable-fonts/Digital.js'
-// @ts-ignore
-import doomFont from 'figlet/importable-fonts/Doom.js'
-// @ts-ignore
-import ghostFont from 'figlet/importable-fonts/Ghost.js'
-// @ts-ignore
-import graffitiFont from 'figlet/importable-fonts/Graffiti.js'
-// @ts-ignore
-import shadowFont from 'figlet/importable-fonts/Shadow.js'
-// @ts-ignore
-import slantFont from 'figlet/importable-fonts/Slant.js'
-// @ts-ignore
-import smallFont from 'figlet/importable-fonts/Small.js'
-// @ts-ignore
-import speedFont from 'figlet/importable-fonts/Speed.js'
-// @ts-ignore
-import starWarsFont from 'figlet/importable-fonts/Star Wars.js'
-// @ts-ignore
-import thickFont from 'figlet/importable-fonts/Thick.js'
-// @ts-ignore
-import thinFont from 'figlet/importable-fonts/Thin.js'
-// @ts-ignore
-import ogieFont from 'figlet/importable-fonts/Ogre.js'
-// @ts-ignore
-import bannerFont from 'figlet/importable-fonts/Banner.js'
-// @ts-ignore
-import ansiShadowFont from 'figlet/importable-fonts/ANSI Shadow.js'
-// @ts-ignore
-import colossalFont from 'figlet/importable-fonts/Colossal.js'
-// @ts-ignore
-import cyberFont from 'figlet/importable-fonts/Cyberlarge.js'
-// @ts-ignore
-import gothicFont from 'figlet/importable-fonts/Gothic.js'
-// @ts-ignore
-import isometricFont from 'figlet/importable-fonts/Isometric1.js'
-// @ts-ignore
-import nancyjFont from 'figlet/importable-fonts/Nancyj.js'
-// @ts-ignore
-import romanFont from 'figlet/importable-fonts/Roman.js'
+import { loadFont as loadFontUtil, getAvailableFonts, isFontLoaded, getLoadedFonts } from '../utils/fontLoader'
 
 // Reactive data
 const inputText = ref('Test')
 const selectedFont = ref('Standard')
 const asciiArt = ref('')
 const previewContainer = ref<HTMLElement>()
+const isLoadingFonts = ref(true)
+const loadedFonts = ref(getLoadedFonts())
 
-// Available fonts (loaded fonts only)
-const availableFonts = ref([
-  'Standard', 'Big', 'Block', 'Bubble', 'Digital',
-  'Doom', 'Ghost', 'Graffiti', 'Shadow', 'Slant',
-  'Small', 'Speed', 'Star Wars', 'Thick', 'Thin',
-  'Ogre', 'Banner', 'ANSI Shadow', 'Colossal', 'Cyberlarge',
-  'Gothic', 'Isometric1', 'Nancyj', 'Roman'
-])
+// Get available fonts from utility
+const availableFonts = ref(getAvailableFonts())
+
+// Wrapper function for font loading
+const loadFont = async (fontName: string): Promise<boolean> => {
+  const result = await loadFontUtil(fontName)
+  // Trigger reactivity update
+  loadedFonts.value = getLoadedFonts()
+  return result
+}
 
 // Computed properties for navigation
 const currentFontIndex = ref(0)
@@ -246,13 +205,20 @@ const updateNavigationState = () => {
 }
 
 // Generate ASCII art
-const generateArt = () => {
+const generateArt = async () => {
   if (!inputText.value.trim()) {
     asciiArt.value = ''
     return
   }
 
   console.log('Generating ASCII art for:', inputText.value, 'with font:', selectedFont.value)
+
+  // Load font if not already loaded
+  const fontLoaded = await loadFont(selectedFont.value)
+  if (!fontLoaded) {
+    asciiArt.value = `Error: Failed to load font "${selectedFont.value}"`
+    return
+  }
 
   try {
     figlet.text(
@@ -279,13 +245,13 @@ const generateArt = () => {
 }
 
 // Navigate fonts with arrow keys
-const navigateFont = (direction: number) => {
+const navigateFont = async (direction: number) => {
   const currentIndex = availableFonts.value.indexOf(selectedFont.value)
   const newIndex = currentIndex + direction
 
   if (newIndex >= 0 && newIndex < availableFonts.value.length) {
     selectedFont.value = availableFonts.value[newIndex]
-    generateArt()
+    await generateArt()
     updateNavigationState()
   }
 }
@@ -503,40 +469,24 @@ watch(selectedFont, () => {
   updateNavigationState()
 })
 
+// Initialize default fonts
+const initializeDefaultFonts = async () => {
+  console.log('Loading initial fonts...')
+  
+  // Load Standard font first as default
+  await loadFont('Standard')
+  
+  console.log('Initial fonts loaded')
+  isLoadingFonts.value = false
+  updateNavigationState()
+  await generateArt()
+}
+
 // Lifecycle hooks
 onMounted(() => {
   console.log('Component mounted, figlet available:', !!figlet)
-
-  // Load fonts manually
-  figlet.parseFont('Standard', standardFont)
-  figlet.parseFont('Big', bigFont)
-  figlet.parseFont('Block', blockFont)
-  figlet.parseFont('Bubble', bubbleFont)
-  figlet.parseFont('Digital', digitalFont)
-  figlet.parseFont('Doom', doomFont)
-  figlet.parseFont('Ghost', ghostFont)
-  figlet.parseFont('Graffiti', graffitiFont)
-  figlet.parseFont('Shadow', shadowFont)
-  figlet.parseFont('Slant', slantFont)
-  figlet.parseFont('Small', smallFont)
-  figlet.parseFont('Speed', speedFont)
-  figlet.parseFont('Star Wars', starWarsFont)
-  figlet.parseFont('Thick', thickFont)
-  figlet.parseFont('Thin', thinFont)
-  figlet.parseFont('Ogre', ogieFont)
-  figlet.parseFont('Banner', bannerFont)
-  figlet.parseFont('ANSI Shadow', ansiShadowFont)
-  figlet.parseFont('Colossal', colossalFont)
-  figlet.parseFont('Cyberlarge', cyberFont)
-  figlet.parseFont('Gothic', gothicFont)
-  figlet.parseFont('Isometric1', isometricFont)
-  figlet.parseFont('Nancyj', nancyjFont)
-  figlet.parseFont('Roman', romanFont)
-
-  console.log('Fonts loaded')
-  updateNavigationState()
-  generateArt()
-
+  
+  initializeDefaultFonts()
   document.addEventListener('keydown', handleKeyPress)
 })
 
