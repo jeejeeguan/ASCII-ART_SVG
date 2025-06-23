@@ -301,7 +301,7 @@ const handleKeyPress = (event: KeyboardEvent) => {
   }
 }
 
-// Export as SVG with text converted to shapes for perfect consistency
+// Export as SVG with enhanced text-to-shape conversion for perfect consistency
 const exportAsSVG = () => {
   if (!asciiArt.value) return
 
@@ -309,42 +309,48 @@ const exportAsSVG = () => {
   const fontSize = 12
   const lineHeight = fontSize * 1.2
 
-  // Create a temporary canvas to render and convert text to shapes
+  // Create a high-resolution canvas for better accuracy
+  const pixelRatio = 2 // Use 2x resolution for better accuracy
   const canvas = document.createElement('canvas')
   const ctx = canvas.getContext('2d')
   if (!ctx) return
 
   // Set up font exactly matching the preview
-  ctx.font = `${fontSize}px monospace`
+  ctx.font = `${fontSize * pixelRatio}px monospace`
   ctx.textBaseline = 'top'
   
   // Calculate actual text dimensions
   const textMetrics = lines.map(line => ctx.measureText(line))
   const maxWidth = Math.max(...textMetrics.map(metric => metric.width))
-  const svgWidth = maxWidth + 40
+  const svgWidth = maxWidth / pixelRatio + 40
   const svgHeight = lines.length * lineHeight + 40
 
-  // Set canvas size
-  canvas.width = maxWidth + 20
-  canvas.height = lines.length * lineHeight + 20
+  // Set high-resolution canvas size
+  canvas.width = (maxWidth + 20 * pixelRatio)
+  canvas.height = (lines.length * lineHeight + 20) * pixelRatio
+
+  // Disable antialiasing for crisp pixel boundaries
+  ctx.imageSmoothingEnabled = false
+  // @ts-ignore - textRenderingOptimization is not in TypeScript definitions but exists
+  ctx.textRenderingOptimization = 'optimizeSpeed'
 
   // Clear canvas with white background
   ctx.fillStyle = 'white'
   ctx.fillRect(0, 0, canvas.width, canvas.height)
 
-  // Set text properties
+  // Set text properties for high-resolution rendering
   ctx.fillStyle = 'black'
-  ctx.font = `${fontSize}px monospace`
+  ctx.font = `${fontSize * pixelRatio}px monospace`
   ctx.textBaseline = 'top'
 
-  // Render each line
+  // Render each line at high resolution
   lines.forEach((line, index) => {
     if (line.trim()) {
-      ctx.fillText(line, 0, index * lineHeight)
+      ctx.fillText(line, 0, index * lineHeight * pixelRatio)
     }
   })
 
-  // Convert canvas to high-quality SVG shapes
+  // Convert canvas to SVG shapes with improved algorithm
   const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
   const pixels = imageData.data
 
@@ -354,10 +360,10 @@ const exportAsSVG = () => {
   <g fill="black">
 `
 
-  // Convert pixels to optimized SVG rectangles
-  const shapes: { x: number; y: number; width: number; height: number }[] = []
-  
+  // Create a binary map for better shape detection
+  const binaryMap: boolean[][] = []
   for (let y = 0; y < canvas.height; y++) {
+    binaryMap[y] = []
     for (let x = 0; x < canvas.width; x++) {
       const index = (y * canvas.width + x) * 4
       const r = pixels[index]
@@ -365,51 +371,41 @@ const exportAsSVG = () => {
       const b = pixels[index + 2]
       const a = pixels[index + 3]
 
-      // If pixel is black (text)
-      if (a > 128 && (r + g + b) < 128) {
-        // Try to merge with adjacent pixels horizontally
-        let width = 1
-        while (x + width < canvas.width) {
-          const nextIndex = (y * canvas.width + (x + width)) * 4
-          const nextR = pixels[nextIndex]
-          const nextG = pixels[nextIndex + 1]
-          const nextB = pixels[nextIndex + 2]
-          const nextA = pixels[nextIndex + 3]
-          
-          if (nextA > 128 && (nextR + nextG + nextB) < 128) {
-            width++
-          } else {
-            break
-          }
-        }
-
-        shapes.push({ x: x + 20, y: y + 20, width, height: 1 })
-        x += width - 1 // Skip the pixels we just processed
-      }
+      // More lenient threshold for anti-aliased pixels
+      binaryMap[y][x] = a > 100 && (r + g + b) < 500
     }
   }
 
-  // Optimize vertical merging
-  const optimizedShapes: { x: number; y: number; width: number; height: number }[] = []
-  shapes.forEach(shape => {
-    // Find if we can merge with a shape directly below
-    const belowShapes = optimizedShapes.filter(s => 
-      s.x === shape.x && 
-      s.width === shape.width && 
-      s.y + s.height === shape.y
-    )
-    
-    if (belowShapes.length > 0) {
-      belowShapes[0].height += shape.height
-    } else {
-      optimizedShapes.push({ ...shape })
+  // Advanced shape detection and merging
+  const processedPixels = new Set<string>()
+  
+  for (let y = 0; y < canvas.height; y++) {
+    for (let x = 0; x < canvas.width; x++) {
+      const pixelKey = `${x},${y}`
+      
+      if (binaryMap[y][x] && !processedPixels.has(pixelKey)) {
+        // Find the largest rectangle starting from this pixel
+        const rect = findLargestRectangle(binaryMap, x, y, processedPixels)
+        
+        if (rect.width > 0 && rect.height > 0) {
+          // Convert high-res coordinates back to SVG coordinates
+          const svgX = (rect.x / pixelRatio) + 20
+          const svgY = (rect.y / pixelRatio) + 20
+          const svgWidth = rect.width / pixelRatio
+          const svgHeight = rect.height / pixelRatio
+          
+          svgContent += `    <rect x="${svgX}" y="${svgY}" width="${svgWidth}" height="${svgHeight}"/>\n`
+          
+          // Mark all pixels in this rectangle as processed
+          for (let py = rect.y; py < rect.y + rect.height; py++) {
+            for (let px = rect.x; px < rect.x + rect.width; px++) {
+              processedPixels.add(`${px},${py}`)
+            }
+          }
+        }
+      }
     }
-  })
-
-  // Add optimized shapes to SVG
-  optimizedShapes.forEach(shape => {
-    svgContent += `    <rect x="${shape.x}" y="${shape.y}" width="${shape.width}" height="${shape.height}"/>\n`
-  })
+  }
 
   svgContent += '  </g>\n</svg>'
 
@@ -423,6 +419,83 @@ const exportAsSVG = () => {
   link.click()
   document.body.removeChild(link)
   URL.revokeObjectURL(url)
+}
+
+// Helper function to find the largest rectangle of black pixels
+const findLargestRectangle = (
+  binaryMap: boolean[][], 
+  startX: number, 
+  startY: number, 
+  processedPixels: Set<string>
+): { x: number; y: number; width: number; height: number } => {
+  if (!binaryMap[startY] || !binaryMap[startY][startX]) {
+    return { x: startX, y: startY, width: 0, height: 0 }
+  }
+
+  // Find maximum width for the first row
+  let maxWidth = 0
+  for (let x = startX; x < binaryMap[startY].length; x++) {
+    if (binaryMap[startY][x] && !processedPixels.has(`${x},${startY}`)) {
+      maxWidth++
+    } else {
+      break
+    }
+  }
+
+  if (maxWidth === 0) {
+    return { x: startX, y: startY, width: 0, height: 0 }
+  }
+
+  // Find maximum height that maintains the width
+  let maxHeight = 1
+  for (let y = startY + 1; y < binaryMap.length; y++) {
+    let canExtend = true
+    for (let x = startX; x < startX + maxWidth; x++) {
+      if (!binaryMap[y] || !binaryMap[y][x] || processedPixels.has(`${x},${y}`)) {
+        canExtend = false
+        break
+      }
+    }
+    
+    if (canExtend) {
+      maxHeight++
+    } else {
+      break
+    }
+  }
+
+  // Try to optimize by reducing width to increase height
+  let bestArea = maxWidth * maxHeight
+  let bestRect = { x: startX, y: startY, width: maxWidth, height: maxHeight }
+
+  for (let width = maxWidth - 1; width > 0; width--) {
+    let height = 1
+    
+    // Calculate max height for this width
+    for (let y = startY + 1; y < binaryMap.length; y++) {
+      let canExtend = true
+      for (let x = startX; x < startX + width; x++) {
+        if (!binaryMap[y] || !binaryMap[y][x] || processedPixels.has(`${x},${y}`)) {
+          canExtend = false
+          break
+        }
+      }
+      
+      if (canExtend) {
+        height++
+      } else {
+        break
+      }
+    }
+
+    const area = width * height
+    if (area > bestArea) {
+      bestArea = area
+      bestRect = { x: startX, y: startY, width, height }
+    }
+  }
+
+  return bestRect
 }
 
 // Watch for selectedFont changes to update navigation state
