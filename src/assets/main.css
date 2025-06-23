@@ -1,0 +1,17 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom styles for the ASCII Art Generator */
+@layer base {
+  body {
+    font-family: system-ui, -apple-system, sans-serif;
+  }
+}
+
+@layer components {
+  .ascii-preview {
+    font-family: 'Courier New', 'Monaco', 'Menlo', monospace;
+    line-height: 1.1;
+  }
+}
