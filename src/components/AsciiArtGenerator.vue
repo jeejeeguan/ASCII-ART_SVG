@@ -43,34 +43,37 @@
             Font Style ({{ currentFontIndex + 1 }}/{{ availableFonts.length }})
             <span v-if="isLoadingFonts" class="text-blue-600 text-xs ml-2">Loading fonts...</span>
           </label>
-          <div class="relative">
+          <select
+            id="fontSelect"
+            v-model="selectedFont"
+            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-lg"
+            @change="generateArt"
+            :disabled="isLoadingFonts"
+          >
+            <option v-for="font in availableFonts" :key="font" :value="font">
+              {{ font }} {{ loadedFonts.has(font) ? '✓' : '' }}
+            </option>
+          </select>
+
+          <!-- Character Width Selection -->
+          <div class="mt-3">
+            <label for="characterWidth" class="block text-sm font-medium text-gray-700 mb-2">
+              Character Width
+            </label>
             <select
-              id="fontSelect"
-              v-model="selectedFont"
-              class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none bg-white text-lg"
+              id="characterWidth"
+              v-model="selectedCharacterWidth"
+              class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-sm"
               @change="generateArt"
-              :disabled="isLoadingFonts"
             >
-              <option v-for="font in availableFonts" :key="font" :value="font">
-                {{ font }} {{ loadedFonts.has(font) ? '✓' : '' }}
+              <option
+                v-for="option in characterWidthOptions"
+                :key="option.value"
+                :value="option.value"
+              >
+                {{ option.label }}
               </option>
             </select>
-            <div class="absolute inset-y-0 right-0 flex items-center px-2 pointer-events-none">
-              <svg
-                class="w-5 h-5 text-gray-500"
-                style="width: 20px; height: 20px"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M19 9l-7 7-7-7"
-                ></path>
-              </svg>
-            </div>
           </div>
 
           <!-- Font Navigation Buttons -->
@@ -133,7 +136,10 @@
       <div class="flex justify-between items-center mb-4">
         <h3 class="text-lg font-semibold text-gray-800">Preview</h3>
         <span v-if="asciiArt" class="text-sm text-gray-500">
-          Font: <span class="font-medium">{{ selectedFont }}</span>
+          Font: <span class="font-medium">{{ selectedFont }}</span> | Width:
+          <span class="font-medium">{{
+            characterWidthOptions.find((opt) => opt.value === selectedCharacterWidth)?.label
+          }}</span>
         </span>
       </div>
       <div
@@ -146,23 +152,7 @@
           class="whitespace-pre text-gray-800 leading-tight text-xs overflow-x-auto"
           >{{ asciiArt }}</pre
         >
-        <div v-else class="text-gray-400 text-center py-12 flex flex-col items-center">
-          <svg
-            class="w-16 h-16 text-gray-300 mb-4"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
-            ></path>
-          </svg>
-          <p class="text-lg">Enter text above to generate ASCII art</p>
-          <p class="text-sm mt-1">Use arrow keys to quickly switch fonts</p>
-        </div>
+        <div v-else class="text-gray-400 text-center py-16 text-sm">输入文字以生成 ASCII 艺术</div>
       </div>
     </div>
   </div>
@@ -171,15 +161,25 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch } from 'vue'
 import figlet from 'figlet'
-import { loadFont as loadFontUtil, getAvailableFonts, isFontLoaded, getLoadedFonts } from '../utils/fontLoader'
+import { loadFont as loadFontUtil, getAvailableFonts, getLoadedFonts } from '../utils/fontLoader'
 
 // Reactive data
 const inputText = ref('Test')
 const selectedFont = ref('Standard')
+const selectedCharacterWidth = ref('default')
 const asciiArt = ref('')
 const previewContainer = ref<HTMLElement>()
 const isLoadingFonts = ref(true)
 const loadedFonts = ref(getLoadedFonts())
+
+// Character width options
+const characterWidthOptions = ref([
+  { value: 'full', label: 'Full' },
+  { value: 'fitted', label: 'Fitted' },
+  { value: 'controlled smushing', label: 'Smush (R)' },
+  { value: 'universal smushing', label: 'Smush (U)' },
+  { value: 'default', label: 'Default' },
+])
 
 // Get available fonts from utility
 const availableFonts = ref(getAvailableFonts())
@@ -225,7 +225,12 @@ const generateArt = async () => {
       inputText.value,
       {
         font: selectedFont.value as figlet.Fonts,
-        horizontalLayout: 'default',
+        horizontalLayout: selectedCharacterWidth.value as
+          | 'default'
+          | 'full'
+          | 'fitted'
+          | 'controlled smushing'
+          | 'universal smushing',
         verticalLayout: 'default',
       },
       (err, data) => {
@@ -284,20 +289,20 @@ const exportAsSVG = () => {
   // Set up font exactly matching the preview
   ctx.font = `${fontSize * pixelRatio}px monospace`
   ctx.textBaseline = 'top'
-  
+
   // Calculate actual text dimensions
-  const textMetrics = lines.map(line => ctx.measureText(line))
-  const maxWidth = Math.max(...textMetrics.map(metric => metric.width))
+  const textMetrics = lines.map((line) => ctx.measureText(line))
+  const maxWidth = Math.max(...textMetrics.map((metric) => metric.width))
   const svgWidth = maxWidth / pixelRatio + 40
   const svgHeight = lines.length * lineHeight + 40
 
   // Set high-resolution canvas size
-  canvas.width = (maxWidth + 20 * pixelRatio)
+  canvas.width = maxWidth + 20 * pixelRatio
   canvas.height = (lines.length * lineHeight + 20) * pixelRatio
 
   // Disable antialiasing for crisp pixel boundaries
   ctx.imageSmoothingEnabled = false
-  // @ts-ignore - textRenderingOptimization is not in TypeScript definitions but exists
+  // @ts-expect-error - textRenderingOptimization is not in TypeScript definitions but exists
   ctx.textRenderingOptimization = 'optimizeSpeed'
 
   // Clear canvas with white background
@@ -338,30 +343,30 @@ const exportAsSVG = () => {
       const a = pixels[index + 3]
 
       // More lenient threshold for anti-aliased pixels
-      binaryMap[y][x] = a > 100 && (r + g + b) < 500
+      binaryMap[y][x] = a > 100 && r + g + b < 500
     }
   }
 
   // Advanced shape detection and merging
   const processedPixels = new Set<string>()
-  
+
   for (let y = 0; y < canvas.height; y++) {
     for (let x = 0; x < canvas.width; x++) {
       const pixelKey = `${x},${y}`
-      
+
       if (binaryMap[y][x] && !processedPixels.has(pixelKey)) {
         // Find the largest rectangle starting from this pixel
         const rect = findLargestRectangle(binaryMap, x, y, processedPixels)
-        
+
         if (rect.width > 0 && rect.height > 0) {
           // Convert high-res coordinates back to SVG coordinates
-          const svgX = (rect.x / pixelRatio) + 20
-          const svgY = (rect.y / pixelRatio) + 20
+          const svgX = rect.x / pixelRatio + 20
+          const svgY = rect.y / pixelRatio + 20
           const svgWidth = rect.width / pixelRatio
           const svgHeight = rect.height / pixelRatio
-          
+
           svgContent += `    <rect x="${svgX}" y="${svgY}" width="${svgWidth}" height="${svgHeight}"/>\n`
-          
+
           // Mark all pixels in this rectangle as processed
           for (let py = rect.y; py < rect.y + rect.height; py++) {
             for (let px = rect.x; px < rect.x + rect.width; px++) {
@@ -380,7 +385,12 @@ const exportAsSVG = () => {
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url
-  link.download = `ascii-art-${inputText.value.replace(/\s+/g, '-').toLowerCase()}.svg`
+  const widthLabel =
+    characterWidthOptions.value
+      .find((opt) => opt.value === selectedCharacterWidth.value)
+      ?.label.toLowerCase()
+      .replace(/\s+/g, '-') || 'default'
+  link.download = `ascii-art-${inputText.value.replace(/\s+/g, '-').toLowerCase()}-${widthLabel}.svg`
   document.body.appendChild(link)
   link.click()
   document.body.removeChild(link)
@@ -389,10 +399,10 @@ const exportAsSVG = () => {
 
 // Helper function to find the largest rectangle of black pixels
 const findLargestRectangle = (
-  binaryMap: boolean[][], 
-  startX: number, 
-  startY: number, 
-  processedPixels: Set<string>
+  binaryMap: boolean[][],
+  startX: number,
+  startY: number,
+  processedPixels: Set<string>,
 ): { x: number; y: number; width: number; height: number } => {
   if (!binaryMap[startY] || !binaryMap[startY][startX]) {
     return { x: startX, y: startY, width: 0, height: 0 }
@@ -422,7 +432,7 @@ const findLargestRectangle = (
         break
       }
     }
-    
+
     if (canExtend) {
       maxHeight++
     } else {
@@ -436,7 +446,7 @@ const findLargestRectangle = (
 
   for (let width = maxWidth - 1; width > 0; width--) {
     let height = 1
-    
+
     // Calculate max height for this width
     for (let y = startY + 1; y < binaryMap.length; y++) {
       let canExtend = true
@@ -446,7 +456,7 @@ const findLargestRectangle = (
           break
         }
       }
-      
+
       if (canExtend) {
         height++
       } else {
@@ -472,10 +482,10 @@ watch(selectedFont, () => {
 // Initialize default fonts
 const initializeDefaultFonts = async () => {
   console.log('Loading initial fonts...')
-  
+
   // Load Standard font first as default
   await loadFont('Standard')
-  
+
   console.log('Initial fonts loaded')
   isLoadingFonts.value = false
   updateNavigationState()
@@ -485,7 +495,7 @@ const initializeDefaultFonts = async () => {
 // Lifecycle hooks
 onMounted(() => {
   console.log('Component mounted, figlet available:', !!figlet)
-  
+
   initializeDefaultFonts()
   document.addEventListener('keydown', handleKeyPress)
 })

@@ -2,7 +2,7 @@
 import figlet from 'figlet'
 
 // All available figlet fonts (295 total)
-export const fontImports: Record<string, () => Promise<any>> = {
+export const fontImports: Record<string, () => Promise<{ default: string }>> = {
   '1Row': () => import('figlet/importable-fonts/1Row.js'),
   '3-D': () => import('figlet/importable-fonts/3-D.js'),
   '3D Diagonal': () => import('figlet/importable-fonts/3D Diagonal.js'),
