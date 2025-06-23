@@ -179,6 +179,44 @@ import blockFont from 'figlet/importable-fonts/Block.js'
 import bubbleFont from 'figlet/importable-fonts/Bubble.js'
 // @ts-ignore
 import digitalFont from 'figlet/importable-fonts/Digital.js'
+// @ts-ignore
+import doomFont from 'figlet/importable-fonts/Doom.js'
+// @ts-ignore
+import ghostFont from 'figlet/importable-fonts/Ghost.js'
+// @ts-ignore
+import graffitiFont from 'figlet/importable-fonts/Graffiti.js'
+// @ts-ignore
+import shadowFont from 'figlet/importable-fonts/Shadow.js'
+// @ts-ignore
+import slantFont from 'figlet/importable-fonts/Slant.js'
+// @ts-ignore
+import smallFont from 'figlet/importable-fonts/Small.js'
+// @ts-ignore
+import speedFont from 'figlet/importable-fonts/Speed.js'
+// @ts-ignore
+import starWarsFont from 'figlet/importable-fonts/Star Wars.js'
+// @ts-ignore
+import thickFont from 'figlet/importable-fonts/Thick.js'
+// @ts-ignore
+import thinFont from 'figlet/importable-fonts/Thin.js'
+// @ts-ignore
+import ogieFont from 'figlet/importable-fonts/Ogre.js'
+// @ts-ignore
+import bannerFont from 'figlet/importable-fonts/Banner.js'
+// @ts-ignore
+import ansiShadowFont from 'figlet/importable-fonts/ANSI Shadow.js'
+// @ts-ignore
+import colossalFont from 'figlet/importable-fonts/Colossal.js'
+// @ts-ignore
+import cyberFont from 'figlet/importable-fonts/Cyberlarge.js'
+// @ts-ignore
+import gothicFont from 'figlet/importable-fonts/Gothic.js'
+// @ts-ignore
+import isometricFont from 'figlet/importable-fonts/Isometric1.js'
+// @ts-ignore
+import nancyjFont from 'figlet/importable-fonts/Nancyj.js'
+// @ts-ignore
+import romanFont from 'figlet/importable-fonts/Roman.js'
 
 // Reactive data
 const inputText = ref('Test')
@@ -187,7 +225,13 @@ const asciiArt = ref('')
 const previewContainer = ref<HTMLElement>()
 
 // Available fonts (loaded fonts only)
-const availableFonts = ref(['Standard', 'Big', 'Block', 'Bubble', 'Digital'])
+const availableFonts = ref([
+  'Standard', 'Big', 'Block', 'Bubble', 'Digital',
+  'Doom', 'Ghost', 'Graffiti', 'Shadow', 'Slant',
+  'Small', 'Speed', 'Star Wars', 'Thick', 'Thin',
+  'Ogre', 'Banner', 'ANSI Shadow', 'Colossal', 'Cyberlarge',
+  'Gothic', 'Isometric1', 'Nancyj', 'Roman'
+])
 
 // Computed properties for navigation
 const currentFontIndex = ref(0)
@@ -257,39 +301,117 @@ const handleKeyPress = (event: KeyboardEvent) => {
   }
 }
 
-// Export as SVG
+// Export as SVG with text converted to shapes for perfect consistency
 const exportAsSVG = () => {
   if (!asciiArt.value) return
 
   const lines = asciiArt.value.split('\n')
-  const maxWidth = Math.max(...lines.map((line) => line.length))
   const fontSize = 12
   const lineHeight = fontSize * 1.2
-  const charWidth = fontSize * 0.6
 
-  const svgWidth = maxWidth * charWidth + 40
+  // Create a temporary canvas to render and convert text to shapes
+  const canvas = document.createElement('canvas')
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return
+
+  // Set up font exactly matching the preview
+  ctx.font = `${fontSize}px monospace`
+  ctx.textBaseline = 'top'
+  
+  // Calculate actual text dimensions
+  const textMetrics = lines.map(line => ctx.measureText(line))
+  const maxWidth = Math.max(...textMetrics.map(metric => metric.width))
+  const svgWidth = maxWidth + 40
   const svgHeight = lines.length * lineHeight + 40
 
-  let svgContent = `<?xml version="1.0" encoding="UTF-8"?>
-<svg width="${svgWidth}" height="${svgHeight}" xmlns="http://www.w3.org/2000/svg">
-  <rect width="100%" height="100%" fill="white"/>
-  <style>
-    .ascii-text {
-      font-family: 'Courier New', monospace;
-      font-size: ${fontSize}px;
-      fill: black;
-    }
-  </style>
-`
+  // Set canvas size
+  canvas.width = maxWidth + 20
+  canvas.height = lines.length * lineHeight + 20
 
+  // Clear canvas with white background
+  ctx.fillStyle = 'white'
+  ctx.fillRect(0, 0, canvas.width, canvas.height)
+
+  // Set text properties
+  ctx.fillStyle = 'black'
+  ctx.font = `${fontSize}px monospace`
+  ctx.textBaseline = 'top'
+
+  // Render each line
   lines.forEach((line, index) => {
     if (line.trim()) {
-      const escapedLine = line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-      svgContent += `  <text x="20" y="${20 + (index + 1) * lineHeight}" class="ascii-text">${escapedLine}</text>\n`
+      ctx.fillText(line, 0, index * lineHeight)
     }
   })
 
-  svgContent += '</svg>'
+  // Convert canvas to high-quality SVG shapes
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+  const pixels = imageData.data
+
+  let svgContent = `<?xml version="1.0" encoding="UTF-8"?>
+<svg width="${svgWidth}" height="${svgHeight}" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${svgWidth} ${svgHeight}">
+  <rect width="100%" height="100%" fill="white"/>
+  <g fill="black">
+`
+
+  // Convert pixels to optimized SVG rectangles
+  const shapes: { x: number; y: number; width: number; height: number }[] = []
+  
+  for (let y = 0; y < canvas.height; y++) {
+    for (let x = 0; x < canvas.width; x++) {
+      const index = (y * canvas.width + x) * 4
+      const r = pixels[index]
+      const g = pixels[index + 1]
+      const b = pixels[index + 2]
+      const a = pixels[index + 3]
+
+      // If pixel is black (text)
+      if (a > 128 && (r + g + b) < 128) {
+        // Try to merge with adjacent pixels horizontally
+        let width = 1
+        while (x + width < canvas.width) {
+          const nextIndex = (y * canvas.width + (x + width)) * 4
+          const nextR = pixels[nextIndex]
+          const nextG = pixels[nextIndex + 1]
+          const nextB = pixels[nextIndex + 2]
+          const nextA = pixels[nextIndex + 3]
+          
+          if (nextA > 128 && (nextR + nextG + nextB) < 128) {
+            width++
+          } else {
+            break
+          }
+        }
+
+        shapes.push({ x: x + 20, y: y + 20, width, height: 1 })
+        x += width - 1 // Skip the pixels we just processed
+      }
+    }
+  }
+
+  // Optimize vertical merging
+  const optimizedShapes: { x: number; y: number; width: number; height: number }[] = []
+  shapes.forEach(shape => {
+    // Find if we can merge with a shape directly below
+    const belowShapes = optimizedShapes.filter(s => 
+      s.x === shape.x && 
+      s.width === shape.width && 
+      s.y + s.height === shape.y
+    )
+    
+    if (belowShapes.length > 0) {
+      belowShapes[0].height += shape.height
+    } else {
+      optimizedShapes.push({ ...shape })
+    }
+  })
+
+  // Add optimized shapes to SVG
+  optimizedShapes.forEach(shape => {
+    svgContent += `    <rect x="${shape.x}" y="${shape.y}" width="${shape.width}" height="${shape.height}"/>\n`
+  })
+
+  svgContent += '  </g>\n</svg>'
 
   // Create and download file
   const blob = new Blob([svgContent], { type: 'image/svg+xml' })
@@ -318,6 +440,25 @@ onMounted(() => {
   figlet.parseFont('Block', blockFont)
   figlet.parseFont('Bubble', bubbleFont)
   figlet.parseFont('Digital', digitalFont)
+  figlet.parseFont('Doom', doomFont)
+  figlet.parseFont('Ghost', ghostFont)
+  figlet.parseFont('Graffiti', graffitiFont)
+  figlet.parseFont('Shadow', shadowFont)
+  figlet.parseFont('Slant', slantFont)
+  figlet.parseFont('Small', smallFont)
+  figlet.parseFont('Speed', speedFont)
+  figlet.parseFont('Star Wars', starWarsFont)
+  figlet.parseFont('Thick', thickFont)
+  figlet.parseFont('Thin', thinFont)
+  figlet.parseFont('Ogre', ogieFont)
+  figlet.parseFont('Banner', bannerFont)
+  figlet.parseFont('ANSI Shadow', ansiShadowFont)
+  figlet.parseFont('Colossal', colossalFont)
+  figlet.parseFont('Cyberlarge', cyberFont)
+  figlet.parseFont('Gothic', gothicFont)
+  figlet.parseFont('Isometric1', isometricFont)
+  figlet.parseFont('Nancyj', nancyjFont)
+  figlet.parseFont('Roman', romanFont)
 
   console.log('Fonts loaded')
   updateNavigationState()
